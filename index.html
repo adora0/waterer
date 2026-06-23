@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="UTF-8">
+
+<title>Smart Irrigation</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body {
+  font-family: Arial;
+  background:#f2f5f7;
+  margin:20px;
+}
+
+h1 {
+ color:#1976d2;
+}
+
+.card {
+
+ background:white;
+ border-radius:12px;
+ padding:20px;
+ margin-bottom:20px;
+ box-shadow:0 3px 10px #ccc;
+
+}
+
+
+.value {
+
+ font-size:32px;
+ font-weight:bold;
+
+}
+
+
+.grid {
+
+display:grid;
+grid-template-columns:
+repeat(auto-fit,minmax(200px,1fr));
+
+gap:15px;
+
+}
+
+
+canvas {
+
+background:white;
+padding:10px;
+border-radius:10px;
+
+}
+
+
+table {
+
+width:100%;
+border-collapse:collapse;
+
+}
+
+
+td,th {
+
+padding:8px;
+border-bottom:1px solid #ddd;
+
+}
+
+
+.green {
+color:green;
+}
+
+
+.red {
+color:red;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<h1>🌱 Smart Irrigation</h1>
+
+
+<div class="card">
+
+<h2>Stato attuale</h2>
+
+
+<div class="grid">
+
+
+<div>
+Temperatura
+<div class="value" id="temp">
+--
+</div>
+</div>
+
+
+<div>
+Umidità aria
+<div class="value" id="hum">
+--
+</div>
+</div>
+
+
+<div>
+Terreno
+<div class="value" id="soil">
+--
+</div>
+</div>
+
+
+<div>
+Irrigazione
+<div class="value" id="water">
+--
+</div>
+</div>
+
+
+</div>
+
+</div>
+
+
+
+
+<div class="card">
+
+<h2>Temperatura</h2>
+
+<canvas id="tempChart"></canvas>
+
+</div>
+
+
+
+
+<div class="card">
+
+<h2>Umidità terreno</h2>
+
+<canvas id="soilChart"></canvas>
+
+</div>
+
+
+
+
+<div class="card">
+
+
+<h2>Ultime irrigazioni</h2>
+
+
+<table>
+
+<thead>
+
+<tr>
+<th>Data</th>
+<th>Durata</th>
+</tr>
+
+</thead>
+
+
+<tbody id="irrigazioni">
+
+</tbody>
+
+
+</table>
+
+
+</div>
+
+
+
+
+
+<script>
+
+
+const API_URL =
+"https://script.google.com/macros/s/AKfycbw0patd8DsT2HjRxVwWziM-Etv0BDmPvE3k4I4b50Dbsq8O0BUS5TZgqj75jzQm31o8Pw/exec?action=read";
+
+
+
+let tempChart;
+let soilChart;
+
+
+
+async function caricaDati(){
+
+
+const risposta =
+await fetch(API_URL);
+
+
+
+const dati =
+await risposta.json();
+
+
+
+if(dati.length==0)
+return;
+
+
+
+aggiornaStato(dati);
+
+
+creaGrafici(dati);
+
+
+mostraIrrigazioni(dati);
+
+
+}
+
+
+
+
+function aggiornaStato(dati){
+
+
+let ultimo =
+dati[dati.length-1];
+
+
+document.getElementById("temp")
+.innerHTML =
+ultimo.temp+" °C";
+
+
+
+document.getElementById("hum")
+.innerHTML =
+ultimo.hum+" %";
+
+
+
+document.getElementById("soil")
+.innerHTML =
+ultimo.soil+" %";
+
+
+
+if(ultimo.irrigation=="1"){
+
+document.getElementById("water")
+.innerHTML =
+"🚿 ON";
+
+}
+
+else {
+
+document.getElementById("water")
+.innerHTML =
+"OFF";
+
+}
+
+
+}
+
+
+
+
+function creaGrafici(dati){
+
+
+let labels =
+dati.map(x=>
+new Date(x.timestamp)
+.toLocaleTimeString()
+);
+
+
+
+let temperature =
+dati.map(x=>x.temp);
+
+
+
+let terreno =
+dati.map(x=>x.soil);
+
+
+
+if(tempChart)
+tempChart.destroy();
+
+
+
+tempChart =
+new Chart(
+document
+.getElementById("tempChart"),
+{
+
+type:"line",
+
+data:{
+
+labels:labels,
+
+datasets:[{
+
+label:"°C",
+
+data:temperature,
+
+borderColor:"red",
+
+tension:.3
+
+}]
+
+}
+
+});
+
+
+
+
+
+if(soilChart)
+soilChart.destroy();
+
+
+
+soilChart =
+new Chart(
+document
+.getElementById("soilChart"),
+{
+
+type:"line",
+
+data:{
+
+labels:labels,
+
+datasets:[{
+
+label:"Umidità terreno %",
+
+data:terreno,
+
+borderColor:"green",
+
+tension:.3
+
+}]
+
+}
+
+});
+
+
+
+}
+
+
+
+
+
+function mostraIrrigazioni(dati){
+
+
+let corpo =
+document.getElementById(
+"irrigazioni"
+);
+
+
+
+corpo.innerHTML="";
+
+
+
+let filtrati =
+dati
+.filter(x=>x.irrigation=="1")
+.reverse()
+.slice(0,10);
+
+
+
+filtrati.forEach(x=>{
+
+
+let riga =
+document.createElement("tr");
+
+
+riga.innerHTML =
+
+`
+<td>
+${new Date(x.timestamp)
+.toLocaleString()}
+</td>
+
+<td>
+avvio
+</td>
+`;
+
+
+
+corpo.appendChild(riga);
+
+
+
+});
+
+
+
+}
+
+
+
+caricaDati();
+
+
+
+</script>
+
+
+
+</body>
+</html>
