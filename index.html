@@ -6,281 +6,408 @@
 <title>Smart Irrigation</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-* {
-margin: 0;
-padding: 0;
-box-sizing: border-box;
-}
+* { margin:0; padding:0; box-sizing:border-box; }
+
 body {
-font-family: 'Segoe UI', Arial, sans-serif;
-background: linear-gradient(135deg, #f2f5f7 0%, #e6eef2 100%);
+font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+background: #f0f4f8;
 min-height: 100vh;
-padding: 15px;
+padding: 16px;
+color: #263238;
 }
-h1 {
-color: #1976d2;
+
+.header {
 text-align: center;
-margin: 15px 0 20px;
-font-size: 1.8rem;
+padding: 16px 0 20px;
 }
-.card {
+.header h1 {
+font-size: 1.6rem;
+font-weight: 700;
+color: #1565c0;
+}
+.header p {
+font-size: 0.85rem;
+color: #78909c;
+margin-top: 2px;
+}
+
+.status-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 12px;
+margin-bottom: 20px;
+}
+.status-item {
 background: white;
 border-radius: 16px;
-padding: 20px;
-margin-bottom: 20px;
-box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-transition: transform 0.2s ease;
-}
-.card:hover {
-transform: translateY(-2px);
-}
-.card h2 {
-color: #2c3e50;
-margin-bottom: 15px;
-font-size: 1.3rem;
-}
-.value {
-font-size: 28px;
-font-weight: 700;
-margin-top: 8px;
-}
-.grid {
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-gap: 15px;
-margin-bottom: 10px;
-}
-.grid > div {
-background: #f8f9fa;
-padding: 15px;
-border-radius: 12px;
+padding: 16px;
 text-align: center;
+box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
-canvas {
+.status-item .icon {
+font-size: 1.5rem;
+margin-bottom: 4px;
+}
+.status-item .label {
+font-size: 0.72rem;
+text-transform: uppercase;
+letter-spacing: 0.5px;
+color: #90a4ae;
+font-weight: 600;
+}
+.status-item .value {
+font-size: 1.5rem;
+font-weight: 700;
+margin-top: 4px;
+}
+.status-item .value.green { color: #2e7d32; }
+.status-item .value.red { color: #c62828; }
+.status-item .value.blue { color: #1565c0; }
+.status-item .value.orange { color: #e65100; }
+.status-item .value.teal { color: #00695c; }
+
+.chart-panel {
 background: white;
-border-radius: 10px;
-max-width: 100%;
-height: auto;
+border-radius: 16px;
+box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+margin-bottom: 16px;
+overflow: hidden;
 }
-table {
+.chart-panel .panel-header {
+padding: 14px 18px;
+display: flex;
+align-items: center;
+gap: 10px;
+border-bottom: 1px solid #e8edf2;
+}
+.chart-panel .panel-header .dot {
+width: 10px;
+height: 10px;
+border-radius: 50%;
+display: inline-block;
+}
+.chart-panel .panel-header .dot.red { background: #e53935; }
+.chart-panel .panel-header .dot.green { background: #43a047; }
+.chart-panel .panel-header h2 {
+font-size: 0.95rem;
+font-weight: 600;
+color: #37474f;
+}
+.chart-panel .panel-body {
+padding: 12px 16px 16px;
+}
+.chart-panel .panel-body canvas {
+display: block;
+max-width: 100%;
+max-height: 220px;
+background: transparent;
+border-radius: 8px;
+}
+
+.table-panel {
+background: white;
+border-radius: 16px;
+box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+overflow: hidden;
+margin-bottom: 16px;
+}
+.table-panel .panel-header {
+padding: 14px 18px;
+display: flex;
+align-items: center;
+gap: 10px;
+border-bottom: 1px solid #e8edf2;
+}
+.table-panel .panel-header .dot {
+width: 10px;
+height: 10px;
+border-radius: 50%;
+background: #1565c0;
+display: inline-block;
+}
+.table-panel .panel-header h2 {
+font-size: 0.95rem;
+font-weight: 600;
+color: #37474f;
+}
+.table-panel table {
 width: 100%;
 border-collapse: collapse;
 }
-th {
-background-color: #f1f8e9;
-}
-td, th {
-padding: 12px 8px;
+.table-panel th {
 text-align: left;
-border-bottom: 1px solid #e0e0e0;
-}
-th {
+padding: 12px 18px;
+font-size: 0.75rem;
+text-transform: uppercase;
+letter-spacing: 0.5px;
+color: #78909c;
 font-weight: 600;
-color: #2e7d32;
+background: #f5f7fa;
 }
-tr:hover {
-background-color: #f5f5f5;
-}
-.green {
-color: #4caf50;
-font-weight: 600;
-}
-.red {
-color: #f44336;
-font-weight: 600;
-}
-@media (max-width: 768px) {
-body {
-padding: 10px;
-}
-h1 {
-font-size: 1.5rem;
-margin: 10px 0 15px;
-}
-.card {
-padding: 15px;
-}
-.grid {
-grid-template-columns: 1fr 1fr;
-gap: 12px;
-}
-.value {
-font-size: 24px;
-}
-.card h2 {
-font-size: 1.2rem;
-}
-}
-@media (max-width: 480px) {
-.grid {
-grid-template-columns: 1fr;
-}
-.value {
-font-size: 26px;
-}
-td, th {
-padding: 10px 6px;
+.table-panel td {
+padding: 12px 18px;
+border-bottom: 1px solid #eceff1;
 font-size: 0.9rem;
+color: #455a64;
 }
+.table-panel tr:last-child td { border-bottom: none; }
+
+@media (max-width: 480px) {
+body { padding: 12px; }
+.header h1 { font-size: 1.3rem; }
+.status-grid { gap: 10px; }
+.status-item { padding: 14px; }
+.status-item .value { font-size: 1.3rem; }
+.chart-panel .panel-body { padding: 10px 12px 14px; }
+.chart-panel .panel-body canvas { max-height: 180px; }
 }
 </style>
 </head>
 <body>
-<h1>🌱 Smart Irrigation</h1>
-<div class="card">
-<h2>Stato attuale</h2>
-<div class="grid">
-<div>
-Temperatura
-<div class="value" id="temp">--</div>
+
+<div class="header">
+<h1>Smart Irrigation</h1>
+<p>Monitoraggio in tempo reale</p>
 </div>
-<div>
-Umidità aria
-<div class="value" id="hum">--</div>
+
+<div class="status-grid">
+<div class="status-item">
+<div class="icon">🌡️</div>
+<div class="label">Temperatura</div>
+<div class="value blue" id="temp">--</div>
 </div>
-<div>
-Terreno
-<div class="value" id="soil">--</div>
+<div class="status-item">
+<div class="icon">💧</div>
+<div class="label">Umidità aria</div>
+<div class="value teal" id="hum">--</div>
 </div>
-<div>
-Irrigazione
+<div class="status-item">
+<div class="icon">🌱</div>
+<div class="label">Terreno</div>
+<div class="value orange" id="soil">--</div>
+</div>
+<div class="status-item">
+<div class="icon">📊</div>
+<div class="label">VPD</div>
+<div class="value" id="vpd">--</div>
+</div>
+<div class="status-item">
+<div class="icon">⚙️</div>
+<div class="label">K Env</div>
+<div class="value" id="kenv">--</div>
+</div>
+<div class="status-item">
+<div class="icon">🚿</div>
+<div class="label">Irrigazione</div>
 <div class="value" id="water">--</div>
 </div>
 </div>
+
+<div class="chart-panel">
+<div class="panel-header">
+<span class="dot red"></span>
+<h2>Temperatura &amp; Umidità</h2>
 </div>
-<div class="card">
-<h2>Temperatura</h2>
-<canvas id="tempChart"></canvas>
+<div class="panel-body">
+<canvas id="mainChart"></canvas>
 </div>
-<div class="card">
-<h2>Umidità terreno</h2>
-<canvas id="soilChart"></canvas>
 </div>
-<div class="card">
+
+<div class="chart-panel">
+<div class="panel-header">
+<span class="dot"></span>
+<h2>VPD (Deficit di Pressione di Vapore)</h2>
+</div>
+<div class="panel-body">
+<canvas id="vpdChart"></canvas>
+</div>
+</div>
+
+<div class="table-panel">
+<div class="panel-header">
+<span class="dot"></span>
 <h2>Ultime irrigazioni</h2>
+</div>
 <table>
 <thead>
-<tr>
-<th>Data</th>
-<th>Durata</th>
-</tr>
+<tr><th>Data</th><th>Stato</th></tr>
 </thead>
 <tbody id="irrigazioni">
 </tbody>
 </table>
 </div>
+
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbw0patd8DsT2HjRxVwWziM-Etv0BDmPvE3k4I4b50Dbsq8O0BUS5TZgqj75jzQm31o8Pw/exec?action=read";
-let tempChart;
-let soilChart;
-async function caricaDati(){
+let mainChart, vpdChart;
+
+function sanitizza(valore, max) {
+const num = parseFloat(valore);
+return (num >= -50 && num <= max) ? num : null;
+}
+
+const chartDefaults = {
+responsive: true,
+maintainAspectRatio: true,
+plugins: {
+legend: {
+labels: { color: '#546e7a', font: { size: 11 }, boxWidth: 12 }
+}
+}
+};
+
+async function caricaDati() {
+try {
 const risposta = await fetch(API_URL);
 const dati = await risposta.json();
-if(dati.length == 0) return;
+if (!dati || dati.length == 0) return;
 aggiornaStato(dati);
 creaGrafici(dati);
 mostraIrrigazioni(dati);
-}
-function aggiornaStato(dati){
-let ultimo = dati[dati.length-1];
-document.getElementById("temp").innerHTML = ultimo.temp+" °C";
-document.getElementById("hum").innerHTML = ultimo.hum+" %";
-document.getElementById("soil").innerHTML = ultimo.soil+" %";
-if(ultimo.irrigation=="1"){
-document.getElementById("water").innerHTML = "<span class='green'>🚿 ON</span>";
-}
-else {
-document.getElementById("water").innerHTML = "<span class='red'>OFF</span>";
+} catch (e) {
+console.error('Errore caricamento dati', e);
 }
 }
-function creaGrafici(dati){
-let labels = dati.map(x=> new Date(x.timestamp).toLocaleTimeString());
-let temperature = dati.map(x=>x.temp);
-let terreno = dati.map(x=>x.soil);
-if(tempChart) tempChart.destroy();
-tempChart = new Chart(
-document.getElementById("tempChart"),
+
+function aggiornaStato(dati) {
+const ultimo = dati[dati.length - 1];
+const temp = sanitizza(ultimo.temp, 60);
+const hum = sanitizza(ultimo.hum, 100);
+const soil = sanitizza(ultimo.soil, 100);
+const vpd = sanitizza(ultimo.vpd, 5);
+const kenv = sanitizza(ultimo.kenv, 3);
+
+document.getElementById("temp").textContent = temp !== null ? temp.toFixed(1) + " °C" : "--";
+document.getElementById("hum").textContent = hum !== null ? hum.toFixed(0) + " %" : "--";
+document.getElementById("soil").textContent = soil !== null ? soil.toFixed(0) + " %" : "--";
+document.getElementById("vpd").textContent = vpd !== null ? vpd.toFixed(2) + " kPa" : "--";
+document.getElementById("kenv").textContent = kenv !== null ? kenv.toFixed(1) : "--";
+
+const water = document.getElementById("water");
+if (ultimo.irrigation == "1") {
+water.className = "value green";
+water.innerHTML = "🚿 ON";
+} else {
+water.className = "value red";
+water.innerHTML = "● OFF";
+}
+}
+
+function creaGrafici(dati) {
+const labels = dati.map(x => {
+const d = new Date(x.timestamp);
+return d.getFullYear() > 2000 ? d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+});
+const temperature = dati.map(x => sanitizza(x.temp, 60) ?? null);
+const hum = dati.map(x => sanitizza(x.hum, 100) ?? null);
+const vpd = dati.map(x => sanitizza(x.vpd, 5) ?? null);
+
+if (mainChart) mainChart.destroy();
+mainChart = new Chart(document.getElementById("mainChart"), {
+type: "line",
+data: {
+labels,
+datasets: [
 {
-type:"line",
-data:{
-labels:labels,
-datasets:[{
-label:"°C",
-data:temperature,
-borderColor:"#f44336",
-backgroundColor:"rgba(244,67,54,0.1)",
-borderWidth:3,
-tension:0.4,
-pointRadius:3,
-pointBackgroundColor:"#f44336"
-}]
+label: "Temperatura °C",
+data: temperature,
+borderColor: "#e53935",
+backgroundColor: "rgba(229,57,53,0.08)",
+borderWidth: 2,
+tension: 0.35,
+pointRadius: 2,
+pointBackgroundColor: "#e53935",
+spanGaps: false,
+fill: true,
+yAxisID: "y"
 },
-options:{
-responsive:true,
-maintainAspectRatio:false,
-scales:{
-y:{
-beginAtZero:false
+{
+label: "Umidità aria %",
+data: hum,
+borderColor: "#1e88e5",
+backgroundColor: "rgba(30,136,229,0.08)",
+borderWidth: 2,
+tension: 0.35,
+pointRadius: 2,
+pointBackgroundColor: "#1e88e5",
+spanGaps: false,
+fill: true,
+yAxisID: "y1"
 }
+]
 },
-plugins:{
-legend:{
-display:false
+options: {
+...chartDefaults,
+scales: {
+x: { ticks: { color: '#90a4ae', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: '#eceff1' } },
+y: {
+beginAtZero: true,
+position: 'left',
+title: { display: true, text: '°C', color: '#e53935', font: { size: 11 } },
+ticks: { color: '#90a4ae', font: { size: 10 } },
+grid: { color: '#eceff1' }
+},
+y1: {
+beginAtZero: true,
+max: 100,
+position: 'right',
+title: { display: true, text: '%', color: '#1e88e5', font: { size: 11 } },
+ticks: { color: '#90a4ae', font: { size: 10 } },
+grid: { drawOnChartArea: false }
 }
 }
 }
 });
-if(soilChart) soilChart.destroy();
-soilChart = new Chart(
-document.getElementById("soilChart"),
-{
-type:"line",
-data:{
-labels:labels,
-datasets:[{
-label:"Umidità terreno %",
-data:terreno,
-borderColor:"#4caf50",
-backgroundColor:"rgba(76,175,80,0.1)",
-borderWidth:3,
-tension:0.4,
-pointRadius:3,
-pointBackgroundColor:"#4caf50"
+
+if (vpdChart) vpdChart.destroy();
+vpdChart = new Chart(document.getElementById("vpdChart"), {
+type: "line",
+data: {
+labels,
+datasets: [{
+label: "VPD kPa",
+data: vpd,
+borderColor: "#8e24aa",
+backgroundColor: "rgba(142,36,170,0.08)",
+borderWidth: 2,
+tension: 0.35,
+pointRadius: 2,
+pointBackgroundColor: "#8e24aa",
+spanGaps: false,
+fill: true
 }]
 },
-options:{
-responsive:true,
-maintainAspectRatio:false,
-scales:{
-y:{
-beginAtZero:true,
-max:100
-}
-},
-plugins:{
-legend:{
-display:false
+options: {
+...chartDefaults,
+scales: {
+x: { ticks: { color: '#90a4ae', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: '#eceff1' } },
+y: {
+beginAtZero: true,
+title: { display: true, text: 'kPa', color: '#8e24aa', font: { size: 11 } },
+ticks: { color: '#90a4ae', font: { size: 10 } },
+grid: { color: '#eceff1' }
 }
 }
 }
 });
 }
-function mostraIrrigazioni(dati){
-let corpo = document.getElementById("irrigazioni");
-corpo.innerHTML="";
-let filtrati = dati
-.filter(x=>x.irrigation=="1")
-.reverse()
-.slice(0,10);
-filtrati.forEach(x=>{
-let riga = document.createElement("tr");
-riga.innerHTML = `
-<td>${new Date(x.timestamp).toLocaleString()}</td>
-<td>avvio</td>
-`;
+
+function mostraIrrigazioni(dati) {
+const corpo = document.getElementById("irrigazioni");
+corpo.innerHTML = "";
+const filtrati = dati.filter(x => x.irrigation == "1").reverse().slice(0, 10);
+filtrati.forEach(x => {
+const d = new Date(x.timestamp);
+const dataOk = d.getFullYear() > 2000;
+const riga = document.createElement("tr");
+riga.innerHTML = `<td>${dataOk ? d.toLocaleString() : 'N/A'}</td><td>✅ Avvio</td>`;
 corpo.appendChild(riga);
 });
+if (filtrati.length === 0) {
+corpo.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#90a4ae;padding:20px;font-size:0.9rem">Nessuna irrigazione recente</td></tr>';
 }
+}
+
 caricaDati();
 setInterval(caricaDati, 60000);
 </script>
