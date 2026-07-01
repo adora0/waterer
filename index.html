@@ -30,6 +30,16 @@ font-size: 0.85rem;
 color: #78909c;
 margin-top: 2px;
 }
+.header .stato-connessione {
+font-size: 0.75rem;
+margin-top: 6px;
+padding: 4px 12px;
+border-radius: 12px;
+display: inline-block;
+}
+.stato-connessione.ok { background: #e8f5e9; color: #2e7d32; }
+.stato-connessione.err { background: #ffebee; color: #c62828; }
+.stato-connessione.caricamento { background: #fff8e1; color: #e65100; }
 
 .status-grid {
 display: grid;
@@ -65,6 +75,7 @@ margin-top: 4px;
 .status-item .value.blue { color: #1565c0; }
 .status-item .value.orange { color: #e65100; }
 .status-item .value.teal { color: #00695c; }
+.status-item .value.purple { color: #6a1b9a; }
 
 .chart-panel {
 background: white;
@@ -102,6 +113,12 @@ max-width: 100%;
 max-height: 220px;
 background: transparent;
 border-radius: 8px;
+}
+.chart-panel .panel-body .no-data {
+text-align: center;
+padding: 40px 16px;
+color: #90a4ae;
+font-size: 0.9rem;
 }
 
 .table-panel {
@@ -151,6 +168,12 @@ font-size: 0.9rem;
 color: #455a64;
 }
 .table-panel tr:last-child td { border-bottom: none; }
+.table-panel .empty-msg {
+text-align: center;
+color: #90a4ae;
+padding: 20px;
+font-size: 0.9rem;
+}
 
 @media (max-width: 480px) {
 body { padding: 12px; }
@@ -168,6 +191,7 @@ body { padding: 12px; }
 <div class="header">
 <h1>Smart Irrigation</h1>
 <p>Monitoraggio in tempo reale</p>
+<div class="stato-connessione" id="connectionStatus">⏳ Caricamento...</div>
 </div>
 
 <div class="status-grid">
@@ -189,7 +213,7 @@ body { padding: 12px; }
 <div class="status-item">
 <div class="icon">📊</div>
 <div class="label">VPD</div>
-<div class="value" id="vpd">--</div>
+<div class="value purple" id="vpd">--</div>
 </div>
 <div class="status-item">
 <div class="icon">⚙️</div>
@@ -210,16 +234,18 @@ body { padding: 12px; }
 </div>
 <div class="panel-body">
 <canvas id="mainChart"></canvas>
+<div class="no-data" id="mainChartEmpty">Nessun dato disponibile</div>
 </div>
 </div>
 
 <div class="chart-panel">
 <div class="panel-header">
-<span class="dot"></span>
+<span class="dot green"></span>
 <h2>VPD (Deficit di Pressione di Vapore)</h2>
 </div>
 <div class="panel-body">
 <canvas id="vpdChart"></canvas>
+<div class="no-data" id="vpdChartEmpty">Nessun dato disponibile</div>
 </div>
 </div>
 
@@ -230,7 +256,7 @@ body { padding: 12px; }
 </div>
 <table>
 <thead>
-<tr><th>Data</th><th>Stato</th></tr>
+<tr><th>Data</th><th>Evento</th><th>Durata</th></tr>
 </thead>
 <tbody id="irrigazioni">
 </tbody>
@@ -238,177 +264,334 @@ body { padding: 12px; }
 </div>
 
 <script>
-const API_URL = "https://script.google.com/macros/s/AKfycbw0patd8DsT2HjRxVwWziM-Etv0BDmPvE3k4I4b50Dbsq8O0BUS5TZgqj75jzQm31o8Pw/exec?action=read";
+// ── CONFIGURAZIONE ──────────────────────────────────────────────────────────
+// 1) Script Google Apps Script (se verrà ripristinato)
+const GAS_URL = "https://script.google.com/macros/s/AKfycbw0patd8DsT2HjRxVwWziM-Etv0BDmPvE3k4I4b50Dbsq8O0BUS5TZgqj75jzQm31o8Pw/exec";
+
+// 2) Google Sheet ID (per tentare accesso diretto se pubblico)
+const SHEET_ID   = "1j--VtwnnMoDl0cs9hjFGBF8YcgB4I-vXRizpBT4aZAo";
+const SHEET_NAME = "waterer";
+
+// Costruisce gli URL alternativi per il fetch
+const DATA_SOURCES = [
+  GAS_URL + "?action=read",                              // Apps Script
+  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${SHEET_NAME}`, // GViz (a volte accessibile)
+  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&sheet=${SHEET_NAME}`,    // Export CSV
+];
+
 let mainChart, vpdChart;
+let datiCache = [];
+const MAX_DATI = 200;
 
+// ── UTILITY ─────────────────────────────────────────────────────────────────
 function sanitizza(valore, max) {
-const num = parseFloat(valore);
-return (num >= -50 && num <= max) ? num : null;
+  const num = parseFloat(valore);
+  return (num >= -50 && num <= max) ? num : null;
 }
 
-const chartDefaults = {
-responsive: true,
-maintainAspectRatio: true,
-plugins: {
-legend: {
-labels: { color: '#546e7a', font: { size: 11 }, boxWidth: 12 }
+function formatDurata(sec) {
+  if (sec == null || isNaN(sec) || sec <= 0) return "";
+  sec = Math.round(sec);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
-}
-};
 
+function formatoEvento(evt) {
+  switch (evt) {
+    case "IRR_START":  return "💧 Avvio";
+    case "IRR_STOP":   return "✅ Fine";
+    case "EMERGENCY":  return "⚠️ Emergenza";
+    case "SOIL_ALERT": return "🌱 Allarme terreno";
+    case "SCHED_CHG":  return "✏️ Modifica schedule";
+    default:           return evt || "—";
+  }
+}
+
+function impostaStatoConnessione(tipo, msg) {
+  const el = document.getElementById("connectionStatus");
+  el.className = "stato-connessione " + tipo;
+  el.textContent = msg;
+}
+
+// ── PARSER CSV ──────────────────────────────────────────────────────────────
+function csvToArray(csvText) {
+  const lines = csvText.trim().split("\n");
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+  const risultati = [];
+  for (let i = 1; i < lines.length; i++) {
+    const valori = lines[i].split(",");
+    if (valori.length < headers.length) continue;
+    const riga = {};
+    for (let j = 0; j < headers.length; j++) {
+      riga[headers[j]] = valori[j] ? valori[j].trim() : "";
+    }
+    // Tenta di validare: se non c'è timestamp valido, salta
+    if (riga.timestamp && new Date(riga.timestamp).getFullYear() > 2000) {
+      risultati.push(riga);
+    }
+  }
+  return risultati;
+}
+
+// ── FETCH DATI ──────────────────────────────────────────────────────────────
 async function caricaDati() {
-try {
-const risposta = await fetch(API_URL);
-const dati = await risposta.json();
-if (!dati || dati.length == 0) return;
-aggiornaStato(dati);
-creaGrafici(dati);
-mostraIrrigazioni(dati);
-} catch (e) {
-console.error('Errore caricamento dati', e);
+  impostaStatoConnessione("caricamento", "⏳ Caricamento...");
+
+  // Prova ogni sorgente in ordine finché una non risponde
+  let dati = [];
+  let errore = "";
+
+  for (const url of DATA_SOURCES) {
+    try {
+      const risposta = await fetch(url, { cache: "no-store" });
+      if (!risposta.ok) {
+        errore = `HTTP ${risposta.status}`;
+        continue;
+      }
+      const contentType = risposta.headers.get("content-type") || "";
+      const text = await risposta.text();
+
+      // Prova a parsare come JSON
+      if (contentType.includes("json") || text.trim().startsWith("[")) {
+        try {
+          dati = JSON.parse(text);
+          if (Array.isArray(dati) && dati.length > 0) break;
+        } catch (_) { /* fallisce, prova CSV */ }
+      }
+
+      // Prova a parsare come CSV (GViz o export)
+      const csvData = csvToArray(text);
+      if (csvData.length > 0) {
+        dati = csvData;
+        break;
+      }
+
+      errore = "Formato non riconosciuto";
+    } catch (e) {
+      errore = e.message || "Errore di rete";
+    }
+  }
+
+  if (dati.length === 0) {
+    // Mostra dati in cache se disponibili
+    if (datiCache.length > 0) {
+      impostaStatoConnessione("err", "⚠️ Dati non aggiornabili — mostro cache");
+      aggiornaDashboard(datiCache);
+    } else {
+      impostaStatoConnessione("err", "❌ Impossibile caricare dati: " + errore);
+    }
+    return;
+  }
+
+  impostaStatoConnessione("ok", "✅ Dati aggiornati");
+  datiCache = dati;
+  aggiornaDashboard(dati);
 }
+
+// ── AGGIORNAMENTO DASHBOARD ────────────────────────────────────────────────
+function aggiornaDashboard(dati) {
+  if (!dati || dati.length === 0) return;
+
+  aggiornaStato(dati);
+  creaGrafici(dati);
+  mostraIrrigazioni(dati);
 }
 
 function aggiornaStato(dati) {
-const ultimo = dati[dati.length - 1];
-const temp = sanitizza(ultimo.temp, 60);
-const hum = sanitizza(ultimo.hum, 100);
-const soil = sanitizza(ultimo.soil, 100);
-const vpd = sanitizza(ultimo.vpd, 5);
-const kenv = sanitizza(ultimo.kenv, 3);
+  const ultimo = dati[dati.length - 1];
 
-document.getElementById("temp").textContent = temp !== null ? temp.toFixed(1) + " °C" : "--";
-document.getElementById("hum").textContent = hum !== null ? hum.toFixed(0) + " %" : "--";
-document.getElementById("soil").textContent = soil !== null ? soil.toFixed(0) + " %" : "--";
-document.getElementById("vpd").textContent = vpd !== null ? vpd.toFixed(2) + " kPa" : "--";
-document.getElementById("kenv").textContent = kenv !== null ? kenv.toFixed(1) : "--";
+  const temp = sanitizza(ultimo.temp, 60);
+  const hum  = sanitizza(ultimo.hum, 100);
+  const soil = sanitizza(ultimo.soil, 100);
+  const vpd  = sanitizza(ultimo.vpd, 5);
+  const kenv = sanitizza(ultimo.kenv, 3);
 
-const water = document.getElementById("water");
-if (ultimo.irrigation == "1") {
-water.className = "value green";
-water.innerHTML = "🚿 ON";
-} else {
-water.className = "value red";
-water.innerHTML = "● OFF";
-}
+  document.getElementById("temp").textContent = temp !== null ? temp.toFixed(1) + " °C" : "--";
+  document.getElementById("hum").textContent  = hum  !== null ? hum.toFixed(0) + " %"   : "--";
+  document.getElementById("soil").textContent = soil !== null ? soil.toFixed(0) + " %"  : "--";
+  document.getElementById("vpd").textContent  = vpd  !== null ? vpd.toFixed(2) + " kPa" : "--";
+  document.getElementById("kenv").textContent = kenv !== null ? kenv.toFixed(1)         : "--";
+
+  const water = document.getElementById("water");
+  if (ultimo.irrigation == "1") {
+    water.className = "value green";
+    water.innerHTML = "🚿 ON";
+  } else {
+    water.className = "value red";
+    water.innerHTML = "● OFF";
+  }
 }
 
 function creaGrafici(dati) {
-const labels = dati.map(x => {
-const d = new Date(x.timestamp);
-return d.getFullYear() > 2000 ? d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
-});
-const temperature = dati.map(x => sanitizza(x.temp, 60) ?? null);
-const hum = dati.map(x => sanitizza(x.hum, 100) ?? null);
-const vpd = dati.map(x => sanitizza(x.vpd, 5) ?? null);
+  const labels = dati.map(x => {
+    const d = new Date(x.timestamp);
+    return d.getFullYear() > 2000
+      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '';
+  });
 
-if (mainChart) mainChart.destroy();
-mainChart = new Chart(document.getElementById("mainChart"), {
-type: "line",
-data: {
-labels,
-datasets: [
-{
-label: "Temperatura °C",
-data: temperature,
-borderColor: "#e53935",
-backgroundColor: "rgba(229,57,53,0.08)",
-borderWidth: 2,
-tension: 0.35,
-pointRadius: 2,
-pointBackgroundColor: "#e53935",
-spanGaps: false,
-fill: true,
-yAxisID: "y"
-},
-{
-label: "Umidità aria %",
-data: hum,
-borderColor: "#1e88e5",
-backgroundColor: "rgba(30,136,229,0.08)",
-borderWidth: 2,
-tension: 0.35,
-pointRadius: 2,
-pointBackgroundColor: "#1e88e5",
-spanGaps: false,
-fill: true,
-yAxisID: "y1"
-}
-]
-},
-options: {
-...chartDefaults,
-scales: {
-x: { ticks: { color: '#90a4ae', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: '#eceff1' } },
-y: {
-beginAtZero: true,
-position: 'left',
-title: { display: true, text: '°C', color: '#e53935', font: { size: 11 } },
-ticks: { color: '#90a4ae', font: { size: 10 } },
-grid: { color: '#eceff1' }
-},
-y1: {
-beginAtZero: true,
-max: 100,
-position: 'right',
-title: { display: true, text: '%', color: '#1e88e5', font: { size: 11 } },
-ticks: { color: '#90a4ae', font: { size: 10 } },
-grid: { drawOnChartArea: false }
-}
-}
-}
-});
+  const temperature = dati.map(x => sanitizza(x.temp, 60) ?? null);
+  const hum         = dati.map(x => sanitizza(x.hum, 100) ?? null);
+  const vpd         = dati.map(x => sanitizza(x.vpd, 5) ?? null);
 
-if (vpdChart) vpdChart.destroy();
-vpdChart = new Chart(document.getElementById("vpdChart"), {
-type: "line",
-data: {
-labels,
-datasets: [{
-label: "VPD kPa",
-data: vpd,
-borderColor: "#8e24aa",
-backgroundColor: "rgba(142,36,170,0.08)",
-borderWidth: 2,
-tension: 0.35,
-pointRadius: 2,
-pointBackgroundColor: "#8e24aa",
-spanGaps: false,
-fill: true
-}]
-},
-options: {
-...chartDefaults,
-scales: {
-x: { ticks: { color: '#90a4ae', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: '#eceff1' } },
-y: {
-beginAtZero: true,
-title: { display: true, text: 'kPa', color: '#8e24aa', font: { size: 11 } },
-ticks: { color: '#90a4ae', font: { size: 10 } },
-grid: { color: '#eceff1' }
-}
-}
-}
-});
+  const chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+      legend: { labels: { color: '#546e7a', font: { size: 11 }, boxWidth: 12 } }
+    }
+  };
+
+  // Mostra/nasconde messaggi "no-data"
+  const haTemp = temperature.some(v => v !== null);
+  const haVpd  = vpd.some(v => v !== null);
+  document.getElementById("mainChart").style.display = haTemp ? "block" : "none";
+  document.getElementById("mainChartEmpty").style.display = haTemp ? "none" : "block";
+  document.getElementById("vpdChart").style.display = haVpd ? "block" : "none";
+  document.getElementById("vpdChartEmpty").style.display = haVpd ? "none" : "block";
+
+  // ── Grafico Temperatura & Umidità ──
+  if (mainChart) mainChart.destroy();
+  if (haTemp) {
+    mainChart = new Chart(document.getElementById("mainChart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Temperatura °C",
+            data: temperature,
+            borderColor: "#e53935",
+            backgroundColor: "rgba(229,57,53,0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            pointRadius: 2,
+            pointBackgroundColor: "#e53935",
+            spanGaps: false,
+            fill: true,
+            yAxisID: "y"
+          },
+          {
+            label: "Umidità aria %",
+            data: hum,
+            borderColor: "#1e88e5",
+            backgroundColor: "rgba(30,136,229,0.08)",
+            borderWidth: 2,
+            tension: 0.35,
+            pointRadius: 2,
+            pointBackgroundColor: "#1e88e5",
+            spanGaps: false,
+            fill: true,
+            yAxisID: "y1"
+          }
+        ]
+      },
+      options: {
+        ...chartDefaults,
+        scales: {
+          x: { ticks: { color: '#90a4ae', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: '#eceff1' } },
+          y: {
+            beginAtZero: true,
+            position: 'left',
+            title: { display: true, text: '°C', color: '#e53935', font: { size: 11 } },
+            ticks: { color: '#90a4ae', font: { size: 10 } },
+            grid: { color: '#eceff1' }
+          },
+          y1: {
+            beginAtZero: true,
+            max: 100,
+            position: 'right',
+            title: { display: true, text: '%', color: '#1e88e5', font: { size: 11 } },
+            ticks: { color: '#90a4ae', font: { size: 10 } },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+  }
+
+  // ── Grafico VPD ──
+  if (vpdChart) vpdChart.destroy();
+  if (haVpd) {
+    vpdChart = new Chart(document.getElementById("vpdChart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "VPD kPa",
+          data: vpd,
+          borderColor: "#8e24aa",
+          backgroundColor: "rgba(142,36,170,0.08)",
+          borderWidth: 2,
+          tension: 0.35,
+          pointRadius: 2,
+          pointBackgroundColor: "#8e24aa",
+          spanGaps: false,
+          fill: true
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        scales: {
+          x: { ticks: { color: '#90a4ae', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: '#eceff1' } },
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: 'kPa', color: '#8e24aa', font: { size: 11 } },
+            ticks: { color: '#90a4ae', font: { size: 10 } },
+            grid: { color: '#eceff1' }
+          }
+        }
+      }
+    });
+  }
 }
 
 function mostraIrrigazioni(dati) {
-const corpo = document.getElementById("irrigazioni");
-corpo.innerHTML = "";
-const filtrati = dati.filter(x => x.irrigation == "1").reverse().slice(0, 10);
-filtrati.forEach(x => {
-const d = new Date(x.timestamp);
-const dataOk = d.getFullYear() > 2000;
-const riga = document.createElement("tr");
-riga.innerHTML = `<td>${dataOk ? d.toLocaleString() : 'N/A'}</td><td>✅ Avvio</td>`;
-corpo.appendChild(riga);
-});
-if (filtrati.length === 0) {
-corpo.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#90a4ae;padding:20px;font-size:0.9rem">Nessuna irrigazione recente</td></tr>';
-}
+  const corpo = document.getElementById("irrigazioni");
+  corpo.innerHTML = "";
+
+  // Filtra righe con evento di irrigazione (evt contiene "IRR") oppure irrigation=1
+  const filtrati = dati.filter(x => {
+    if (x.evt && (x.evt.startsWith("IRR") || x.evt === "EMERGENCY")) return true;
+    return x.irrigation == "1";
+  }).reverse().slice(0, 15);
+
+  if (filtrati.length === 0) {
+    corpo.innerHTML = '<tr><td colspan="3" class="empty-msg">Nessuna irrigazione registrata</td></tr>';
+    return;
+  }
+
+  filtrati.forEach(x => {
+    const d = new Date(x.timestamp);
+    const dataOk = d.getFullYear() > 2000;
+
+    // Determina tipo evento e icona
+    let evento, durata;
+    if (x.evt) {
+      evento = formatoEvento(x.evt);
+      durata = (x.dur) ? formatDurata(parseInt(x.dur)) : "";
+      // Se è IRR_STOP ed evt non ha dur, prova a calcolare dall'ultimo start
+    } else if (x.irrigation == "1") {
+      evento = "💧 In corso";
+      durata = "";
+    } else {
+      evento = "—";
+      durata = "";
+    }
+
+    const riga = document.createElement("tr");
+    riga.innerHTML = `<td>${dataOk ? d.toLocaleString() : 'N/A'}</td><td>${evento}</td><td>${durata}</td>`;
+    corpo.appendChild(riga);
+  });
 }
 
+// ── AVVIO ──────────────────────────────────────────────────────────────────
 caricaDati();
+
+// Ricarica ogni 60 secondi
 setInterval(caricaDati, 60000);
 </script>
 </body>
